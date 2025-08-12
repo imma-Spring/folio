@@ -1,0 +1,38 @@
+Fair Share License (FSL) License 1.0
+
+Copyright (c) 2025 Jairus Davis
+
+Permission is hereby granted, free of charge, to use, copy, modify, and distribute this software, subject to the following conditions:
+
+    Redistribution of the original, unmodified software is permitted only if:
+    a. All files, names, credits, attributions, and notices remain exactly as in the original, without alteration, removal, or addition.
+    b. No files, directories, identifiers, or notices are renamed, omitted, or otherwise changed in any way.
+    c. This license is included in full and unmodified.
+    d. Commercial redistribution of the original, unmodified software is strictly prohibited.
+
+    Redistribution of modified versions (including derivative, extended, or reduced forms) is permitted only if:
+    a. All modifications and changes made to the original software are clearly documented in a changelog, commit history, or equivalent distributed documentation.
+    b. The modified version is licensed under this same license, without exceptions or additional restrictions.
+    c. The distributor does not claim authorship of any unmodified portions of the original software.
+    d. A clear and accessible reference or direct link to the original source is included in a README or equivalent documentation distributed with the modified version.
+    e. This clause does not apply to private use or contributions intended solely for submission back to the original project.
+    f. Commercial redistribution of modified versions is permitted provided that:
+        i. Any fees or prices charged are reasonable and not excessive;
+        ii. No business practices constituting exploitation—including, but not limited to, unauthorized data collection beyond essential quality-of-life features, advertising, or predatory behavior towards current or potential users—are employed.
+
+    No party may misrepresent the origin of the software or any modified version, nor remove or alter original attribution, credits, or license notices.
+
+    Patent Grant and Termination:
+    a. Each contributor hereby grants a perpetual, worldwide, non-exclusive, royalty-free patent license to make, use, sell, offer for sale, import, and otherwise distribute the software.
+    b. Any licensee who initiates patent litigation alleging that the software infringes a patent shall have their rights under this license terminated immediately and automatically.
+
+    License Compatibility:
+    This license is standalone and does not permit relicensing under any other license.
+
+    Contribution Licensing:
+    All contributions submitted to the original project must be licensed under this same license without exception.
+
+    Termination:
+    This license terminates immediately and automatically upon any breach of its terms.
+
+    THE SOFTWARE IS PROVIDED "AS IS," WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
