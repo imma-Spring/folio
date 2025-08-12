@@ -1,46 +1,38 @@
-//! By convention, main.zig is where your main function lives in the case that
-//! you are building an executable. If you are making a library, the convention
-//! is to delete this file and start with root.zig instead.
+const std = @import("std");
+const rl = @import("raylib");
 
 pub fn main() !void {
-    // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
-    std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
+    const allocator = std.heap.page_allocator;
 
-    // stdout is for the actual output of your application, for example if you
-    // are implementing gzip, then only the compressed bytes should be sent to
-    // stdout, not any debugging messages.
-    const stdout_file = std.io.getStdOut().writer();
-    var bw = std.io.bufferedWriter(stdout_file);
-    const stdout = bw.writer();
+    const screen_width = 800;
+    const screen_height = 600;
 
-    try stdout.print("Run `zig build test` to run the tests.\n", .{});
+    rl.initWindow(screen_width, screen_height, "Folio");
+    rl.maximizeWindow();
 
-    try bw.flush(); // Don't forget to flush!
+    const file = try getProject();
+    const file_contents = try readFile(file, allocator);
+    defer allocator.free(file_contents);
+
+    const formated_contents: [:0]u8 = try std.fmt.allocPrintZ(allocator, "{s}", .{file_contents});
+    defer allocator.free(formated_contents);
+
+    while (!rl.windowShouldClose()) {
+        rl.beginDrawing();
+        defer rl.endDrawing();
+
+        rl.clearBackground(.gray);
+        rl.drawText(formated_contents, 10, 10, 10, .white);
+    }
 }
 
-test "simple test" {
-    var list = std.ArrayList(i32).init(std.testing.allocator);
-    defer list.deinit(); // Try commenting this out and see if zig detects the memory leak!
-    try list.append(42);
-    try std.testing.expectEqual(@as(i32, 42), list.pop());
+fn getProject() !std.fs.File {
+    const file = try std.fs.cwd().openFile("test.md", .{});
+    return file;
 }
 
-test "use other module" {
-    try std.testing.expectEqual(@as(i32, 150), lib.add(100, 50));
+fn readFile(file: std.fs.File, allocator: std.mem.Allocator) ![]const u8 {
+    const file_reader = file.reader();
+    const contents = try file_reader.readUntilDelimiterOrEofAlloc(allocator, 0, 47000) orelse "";
+    return contents;
 }
-
-test "fuzz example" {
-    const Context = struct {
-        fn testOne(context: @This(), input: []const u8) anyerror!void {
-            _ = context;
-            // Try passing `--fuzz` to `zig build test` and see if it manages to fail this test case!
-            try std.testing.expect(!std.mem.eql(u8, "canyoufindme", input));
-        }
-    };
-    try std.testing.fuzz(Context{}, Context.testOne, .{});
-}
-
-const std = @import("std");
-
-/// This imports the separate module containing `root.zig`. Take a look in `build.zig` for details.
-const lib = @import("folio_lib");
