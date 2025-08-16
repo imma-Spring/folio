@@ -33,7 +33,7 @@ pub const Token = struct {
         return .{
             .type = token_type,
             .start = start_pointer,
-            .end = start_pointer + len,
+            .end = advancePointer(start_pointer, len),
         };
     }
 };
@@ -84,7 +84,7 @@ pub const Tokenizer = struct {
 
 fn getNormalToken(start: **const u8, token_type: TokenType) Token {
     const token = Token.newToken(token_type, start.*, 1);
-    start.* += 1;
+    start.* = advancePointer(start.*, 1);
     return token;
 }
 
@@ -92,16 +92,57 @@ fn getNumberToken(current_pos: **const u8) Token {
     const start = current_pos.*;
     var len: usize = 0;
     while (std.ascii.isDigit(current_pos.*.*) and current_pos.*.* != 0) : (len += 1) {
-        current_pos.* += 1;
+        current_pos.* = advancePointer(current_pos.*, 1);
     }
-    return Token.newToken(.number, start.*, len);
+    return Token.newToken(.number, start, len);
 }
 
 fn getTextToken(current_pos: **const u8) Token {
     const start = current_pos.*;
     var len: usize = 0;
     while (std.ascii.isAlphabetic(current_pos.*.*) and current_pos.*.* != 0) : (len += 1) {
-        current_pos.* += 1;
+        current_pos.* = advancePointer(current_pos.*, 1);
     }
-    return Token.newToken(.text, start.*, len);
+    return Token.newToken(.text, start, len);
+}
+
+fn advancePointer(ptr: *const u8, n: usize) *const u8 {
+    var ptr_rep: usize = @intFromPtr(ptr);
+    ptr_rep += n;
+    return @ptrFromInt(ptr_rep);
+}
+
+test "tokenize simple symbols" {
+    const input: [:0]const u8 = "*#_";
+    var t = Tokenizer.init(input);
+
+    const tok1 = t.nextToken();
+    try std.testing.expectEqual(TokenType.asterisk, tok1.type);
+
+    const tok2 = t.nextToken();
+    try std.testing.expectEqual(TokenType.hashtag, tok2.type);
+
+    const tok3 = t.nextToken();
+    try std.testing.expectEqual(TokenType.underscore, tok3.type);
+
+    const tok4 = t.nextToken();
+    try std.testing.expectEqual(TokenType.eof, tok4.type);
+}
+
+test "tokenize numbers" {
+    const input: [:0]const u8 = "1234";
+    var t = Tokenizer.init(input);
+
+    const tok = t.nextToken();
+    try std.testing.expectEqual(TokenType.number, tok.type);
+    try std.testing.expectEqual(@intFromPtr(tok.end) - @intFromPtr(tok.start), 4);
+}
+
+test "tokenize text" {
+    const input: [:0]const u8 = "hello";
+    var t = Tokenizer.init(input);
+
+    const tok = t.nextToken();
+    try std.testing.expectEqual(TokenType.text, tok.type);
+    try std.testing.expectEqual(@intFromPtr(tok.end) - @intFromPtr(tok.start), 5);
 }
