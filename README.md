@@ -19,5 +19,5 @@ zig build run
 ## Testing
 
 ```bash
-zig text # file you want to test
+zig test # file you want to test
 ```
