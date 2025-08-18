@@ -42,6 +42,8 @@ pub const HeaderLevel = enum {
 };
 
 pub const TokenFormater = struct {
+    const This = @This();
+
     tokens: std.ArrayList(LexerToken),
     //mode: std.DoublyLinkedList(Mode) = undefined,
 
@@ -70,6 +72,12 @@ pub const TokenFormater = struct {
                         format_node.text = text;
                     }
                 },
+                .bask_slash => {
+                    if ((this.getNumberOfBackslashes(i) & 1) == 1) {
+                        const text: []const u8 = parseText(token, allocator);
+                        format_node.text = text;
+                    }
+                },
                 else => {},
             }
 
@@ -79,7 +87,7 @@ pub const TokenFormater = struct {
         return format_tokens;
     }
 
-    fn isHeader(this: *TokenFormater, start_index: usize) bool {
+    fn isHeader(this: *This, start_index: usize) bool {
         const is_first = start_index == 0;
         const follows_newline = if (start_index > 0) this.tokens.items[start_index - 1].type == .newline else false;
 
@@ -97,7 +105,7 @@ pub const TokenFormater = struct {
         return precedes_space;
     }
 
-    fn getHeaderLevel(this: *TokenFormater, start_index: usize) usize {
+    fn getHeaderLevel(this: *This, start_index: usize) usize {
         var index: usize = start_index;
         var num_hashes: usize = 0;
 
@@ -106,6 +114,16 @@ pub const TokenFormater = struct {
         }
 
         return num_hashes;
+    }
+
+    fn getNumberOfBackslashes(this: *This, start_index: usize) usize {
+        var index: usize = start_index - 1;
+        var num_backslashes = 0;
+        while (index >= 0 and this.tokens.items[index].type == .back_slash) : (index -= 1) {
+            num_backslashes += 1;
+        }
+
+        return num_backslashes;
     }
 };
 
