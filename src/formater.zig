@@ -68,9 +68,23 @@ pub const CodeBlock = struct {
     content_end: ?*MarkdownElementNode = null,
 };
 
-pub const TokenFormater = struct {
-    prev_token: ?LexerToken = null,
-    current_token: LexerToken = undefined,
+pub const Mode = enum {
+    italic,
+    bold,
+    code,
+    list,
+};
 
-    pub fn format(this: *TokenFormater, tokenizer: LexerTokenizer, allocator: std.mem.Allocator) *MarkdownElementNode {}
+pub const TokenFormater = struct {
+    prev_token: LexerToken = .{.type = .eof, .start = 0, .end = 0},
+    current_token: LexerToken = undefined,
+    mode: std.ArrayList(Mode) = undefined,
+
+    pub fn format(this: *TokenFormater, tokenizer: LexerTokenizer, allocator: std.mem.Allocator) *MarkdownElementNode {
+        this.mode = std.ArrayList(Mode).init(allocator);
+        this.current_token = tokenizer.nextToken();
+        while (this.current_token.type != .eof) {
+            switch () {}
+        }
+    }
 };

@@ -21,6 +21,7 @@ pub const TokenType = enum {
     dash,
     plus,
     space,
+    back_slash,
     eof,
 };
 
@@ -75,10 +76,24 @@ pub const Tokenizer = struct {
             '.' => getNormalToken(&this.current_pos, .period),
             '"' => getNormalToken(&this.current_pos, .quote),
             ' ' => getNormalToken(&this.current_pos, .space),
+            '\\' => getNormalToken(&this.current_pos, .back_slash),
             '0'...'9' => getNumberToken(&this.current_pos),
             'a'...'z', 'A'...'Z' => getTextToken(&this.current_pos),
             else => unreachable,
         };
+    }
+
+    pub fn getTokens(this: *Tokenizer, allocator: std.mem.Allocator) std.ArrayList(Token) {
+        const tokens = std.ArrayList(Token);
+        tokens.init(allocator);
+
+        var current_token = this.nextToken();
+        while (current_token.type != .eof) {
+            tokens.append(current_token);
+            current_token = this.nextToken();
+        }
+
+        return tokens;
     }
 };
 
@@ -146,3 +161,4 @@ test "tokenize text" {
     try std.testing.expectEqual(TokenType.text, tok.type);
     try std.testing.expectEqual(@intFromPtr(tok.end) - @intFromPtr(tok.start), 5);
 }
+
