@@ -2,6 +2,7 @@ const std = @import("std");
 const rl = @import("raylib");
 
 const lexer = @import("lexer.zig");
+const format = @import("formater.zig");
 
 pub fn main() !void {
     const allocator = std.heap.page_allocator;

@@ -47,8 +47,78 @@ pub const TokenFormater = struct {
 
     pub fn format(this: *TokenFormater, tokenizer: LexerTokenizer, allocator: std.mem.Allocator) std.DoublyLinkedList(FormaterElement) {
         this.tokens = tokenizer.getTokens(allocator);
-        const format_tokens: std.DoublyLinkedList(FormaterElement) = std.DoublyLinkedList(FormaterElement);
+        defer this.tokens.deinit();
+
+        const format_tokens = std.DoublyLinkedList(FormaterElement);
+
+        var i: usize = 0;
+        while (i < this.tokens.items.len) : (i += 1) {
+            const token = this.tokens.items[i];
+            var format_node: FormaterElement = undefined;
+            switch (token.type) {
+                .text => {
+                    const text: []const u8 = parseText(token, allocator);
+                    format_node.text = text;
+                },
+                .hashtag => {
+                    if (this.isHeader(i)) {
+                        const header_level = this.getHeaderLevel(i);
+                        format_node.header_start = header_level;
+                        i += header_level - 1;
+                    } else {
+                        const text: []const u8 = parseText(token, allocator);
+                        format_node.text = text;
+                    }
+                },
+                else => {},
+            }
+
+            format_tokens.append(format_node);
+        }
 
         return format_tokens;
     }
+
+    fn isHeader(this: *TokenFormater, start_index: usize) bool {
+        const is_first = start_index == 0;
+        const follows_newline = if (start_index > 0) this.tokens.items[start_index - 1].type == .newline else false;
+
+        if (!(is_first or follows_newline)) return false;
+
+        const num_hashes = this.getHeaderLevel(start_index);
+        if (num_hashes == 0 or num_hashes > 6) return false;
+
+        const end_index = start_index + (num_hashes - 1);
+
+        const is_last = end_index >= this.tokens.items.len;
+        if (is_last) return true;
+
+        const precedes_space = this.tokens.items[end_index].type == .space;
+        return precedes_space;
+    }
+
+    fn getHeaderLevel(this: *TokenFormater, start_index: usize) usize {
+        var index: usize = start_index;
+        var num_hashes: usize = 0;
+
+        while (index < this.tokens.items.len and this.tokens.items[index].type == .hashtag) : (index += 1) {
+            num_hashes += 1;
+        }
+
+        return num_hashes;
+    }
 };
+
+fn parseText(token: LexerToken, allocator: std.mem.Allocator) []const u8 {
+    const text_length: usize = @intFromPtr(token.end) - @intFromPtr(token.start);
+    var buffer = allocator.alloc(u8, text_length);
+    fillBuffer(&buffer, token.start, text_length);
+    return buffer;
+}
+
+fn fillBuffer(buffer: *[]u8, start: *u8, length: usize) void {
+    for (0..length) |i| {
+        const index = @intFromPtr(start) + i;
+        buffer.*[i] = @as(*u8, @ptrFromInt(index)).*;
+    }
+}

@@ -14,7 +14,7 @@ pub const TokenType = enum {
     open_parenthesis,
     close_parenthesis,
     bang,
-    escape,
+    newline,
     number,
     period,
     quote,
@@ -72,7 +72,7 @@ pub const Tokenizer = struct {
             '(' => getNormalToken(&this.current_pos, .open_parenthesis),
             ')' => getNormalToken(&this.current_pos, .close_parenthesis),
             '!' => getNormalToken(&this.current_pos, .bang),
-            '\n' => getNormalToken(&this.current_pos, .escape),
+            '\n' => getNormalToken(&this.current_pos, .newline),
             '.' => getNormalToken(&this.current_pos, .period),
             '"' => getNormalToken(&this.current_pos, .quote),
             ' ' => getNormalToken(&this.current_pos, .space),
@@ -161,4 +161,3 @@ test "tokenize text" {
     try std.testing.expectEqual(TokenType.text, tok.type);
     try std.testing.expectEqual(@intFromPtr(tok.end) - @intFromPtr(tok.start), 5);
 }
-
