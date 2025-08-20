@@ -41,10 +41,21 @@ pub const HeaderLevel = enum {
     header_6,
 };
 
+pub const Tag = enum {
+    bold,
+    italics,
+};
+
+pub const Entry = struct {
+    type: Tag,
+    idx: usize,
+};
+
 pub const TokenFormater = struct {
     const This = @This();
 
     tokens: std.ArrayList(LexerToken),
+    tag: std.DoublyLinkedList(Entry) = std.DoublyLinkedList(Entry),
     //mode: std.DoublyLinkedList(Mode) = undefined,
 
     pub fn format(this: *TokenFormater, tokenizer: LexerTokenizer, allocator: std.mem.Allocator) std.DoublyLinkedList(FormaterElement) {
@@ -60,22 +71,41 @@ pub const TokenFormater = struct {
             switch (token.type) {
                 .text => {
                     const text: []const u8 = parseText(token, allocator);
-                    format_node.text = text;
+                    format_node = .{ .text = text };
                 },
                 .hashtag => {
                     if (this.isHeader(i)) {
                         const header_level = this.getHeaderLevel(i);
-                        format_node.header_start = header_level;
+                        format_node = .{ .header_start = header_level };
                         i += header_level - 1;
                     } else {
                         const text: []const u8 = parseText(token, allocator);
-                        format_node.text = text;
+                        format_node = .{ .text = text };
                     }
                 },
                 .bask_slash => {
                     if ((this.getNumberOfBackslashes(i) & 1) == 1) {
                         const text: []const u8 = parseText(token, allocator);
-                        format_node.text = text;
+                        format_node = .{ .text = text };
+                    }
+                },
+                .underscore => {
+                    if (takeByIndex(this.tag, i)) |entry| {
+                        switch (entry.type) {
+                            .bold => {
+                                i += 1;
+                            },
+                            else => {},
+                        }
+                    } else {
+                        const empasis_type = this.getEmphasis(i, .underscore);
+                        if (empasis_type) |tag| {
+                            this.tag.append(tag);
+                            format_node = .{ .bold_start = {} };
+                        } else {
+                            const text: []const u8 = parseText(token, allocator);
+                            format_node = .{ .text = text };
+                        }
                     }
                 },
                 else => {},
@@ -122,8 +152,43 @@ pub const TokenFormater = struct {
         while (index >= 0 and this.tokens.items[index].type == .back_slash) : (index -= 1) {
             num_backslashes += 1;
         }
+    }
 
-        return num_backslashes;
+    fn getEmphasis(this: *This, start_index: usize, symbol: LexerTokenType) ?struct { type: Tag, end: usize } {
+        const tokens = this.tokens.items;
+        var count: usize = 0;
+        var i: usize = start_index;
+        if (this.getNumberOfBackslashes(i) & 1 == 1) return null;
+
+        while (i < tokens.len and tokens[i].type == symbol) : (i += 1) {
+            count += 1;
+            if (count == 2) break;
+        }
+
+        if (count == 0) return null;
+
+        if (count == 1 and i < tokens.len and tokens[i].type == .space) return null;
+
+        if (count == 2 and i < tokens.len and tokens[i].type == .space) count = 1;
+
+        const emphasis_type = if (count == 2) .bold else .italics;
+
+        var j: usize = i;
+        var seen: usize = 0;
+        while (j < tokens.len and tokens[j].type != .newline) : (j += 1) {
+            if (tokens[j].type == symbol) {
+                if (this.getNumberOfBackslashes(j) & 1 == 1) {
+                    seen = 0;
+                    continue;
+                }
+                seen += 1;
+                if (seen == count) return .{ .type = emphasis_type, .end = j };
+            } else {
+                seen = 0;
+            }
+        }
+
+        return null;
     }
 };
 
@@ -139,4 +204,16 @@ fn fillBuffer(buffer: *[]u8, start: *u8, length: usize) void {
         const index = @intFromPtr(start) + i;
         buffer.*[i] = @as(*u8, @ptrFromInt(index)).*;
     }
+}
+
+fn takeByIndex(list: *std.DoublyLinkedList(Entry), index: usize) ?Entry {
+    var node = list.first;
+    while (node) |n| {
+        if (n.data.idx == index) {
+            list.remove(n);
+            return n;
+        }
+        node = n.next;
+    }
+    return null;
 }
