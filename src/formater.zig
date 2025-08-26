@@ -193,6 +193,26 @@ pub const TokenFormater = struct {
                         format_node = .{ .text = text };
                     }
                 },
+                .number => {
+                    if (this.isListMarker(i, .ordered)) {
+                        const indent_level = this.getIndentation(i);
+                        const end_index = this.findListItemEnd(i, indent_level);
+
+                        if (!this.hasIndent() or indent_level > this.peekIndent()) {
+                            this.pushIndent(allocator, indent_level);
+                            const list_end_index = this.findListEnd(i, indent_level);
+                            this.tag.append(.{ .type = .ordered, .idx = list_end_index });
+                            format_tokens.append(.{ .unordered_list_start = {} });
+                        }
+
+                        this.tag.append(.{ .type = .ordered_item, .idx = end_index });
+                        format_node = .{ .unordered_list_item_start = {} };
+                        i += 2;
+                    } else {
+                        const text: []const u8 = parseText(token, allocator);
+                        format_node = .{ .text = text };
+                    }
+                },
                 else => {},
             }
 
