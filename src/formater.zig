@@ -16,6 +16,14 @@ pub const FormaterElementTag = enum {
     code_end,
     code_block_start,
     code_block_end,
+    list_start,
+    list_end,
+    list_item_start,
+    list_item_end,
+    ordered_list_start,
+    ordered_list_end,
+    ordered_list_item_start,
+    ordered_list_item_end,
 };
 
 pub const FormaterElement = union(FormaterElementTag) {
@@ -30,6 +38,14 @@ pub const FormaterElement = union(FormaterElementTag) {
     code_end: void,
     code_block_start: []const u8,
     code_block_end: void,
+    unordered_list_start: void,
+    unordered_list_end: void,
+    unordered_list_item_start: void,
+    unordered_list_item_end: void,
+    ordered_list_start: void,
+    ordered_list_end: void,
+    ordered_list_item_start: void,
+    ordered_list_item_end: void,
 };
 
 pub const HeaderLevel = enum {
@@ -44,6 +60,10 @@ pub const HeaderLevel = enum {
 pub const Tag = enum {
     bold,
     italics,
+    unordered,
+    unordered_item,
+    ordered,
+    ordered_item,
 };
 
 pub const Entry = struct {
@@ -51,11 +71,23 @@ pub const Entry = struct {
     idx: usize,
 };
 
+const ListType = enum {
+    ordered,
+    unordered,
+};
+
+const IndentNode = struct {
+    index: usize,
+    next: ?*IndentNode = null,
+};
+
 pub const TokenFormater = struct {
     const This = @This();
 
     tokens: std.ArrayList(LexerToken),
     tag: std.DoublyLinkedList(Entry) = std.DoublyLinkedList(Entry),
+    in_list: bool = false,
+    list_indent_stack: ?*IndentNode = null,
     //mode: std.DoublyLinkedList(Mode) = undefined,
 
     pub fn format(this: *TokenFormater, tokenizer: LexerTokenizer, allocator: std.mem.Allocator) std.DoublyLinkedList(FormaterElement) {
@@ -108,6 +140,59 @@ pub const TokenFormater = struct {
                         }
                     }
                 },
+                .asterisk => {
+                    if (this.isListMarker(i, .unordered)) {
+                        const indent_level = this.getIndentation(i);
+                        const end_index = this.findListItemEnd(i, indent_level);
+
+                        if (!this.hasIndent() or indent_level > this.peekIndent()) {
+                            this.pushIndent(allocator, indent_level);
+                            const list_end_index = this.findListEnd(i, indent_level);
+                            this.tag.append(.{ .type = .unordered, .idx = list_end_index });
+                            format_tokens.append(.{ .unordered_list_start = {} });
+                        }
+
+                        this.tag.append(.{ .type = .unordered_item, .idx = end_index });
+                        format_node = .{ .unordered_list_item_start = {} };
+                        i += 1;
+                    } else if (takeByIndex(this.tag, i)) |entry| {
+                        switch (entry.type) {
+                            .bold => {
+                                i += 1;
+                            },
+                            else => {},
+                        }
+                    } else {
+                        const empasis_type = this.getEmphasis(i, .asterisk);
+                        if (empasis_type) |tag| {
+                            this.tag.append(tag);
+                            format_node = .{ .bold_start = {} };
+                        } else {
+                            const text: []const u8 = parseText(token, allocator);
+                            format_node = .{ .text = text };
+                        }
+                    }
+                },
+                .plus, .dash => {
+                    if (this.isListMarker(i, .unordered)) {
+                        const indent_level = this.getIndentation(i);
+                        const end_index = this.findListItemEnd(i, indent_level);
+
+                        if (!this.hasIndent() or indent_level > this.peekIndent()) {
+                            this.pushIndent(allocator, indent_level);
+                            const list_end_index = this.findListEnd(i, indent_level);
+                            this.tag.append(.{ .type = .unordered, .idx = list_end_index });
+                            format_tokens.append(.{ .unordered_list_start = {} });
+                        }
+
+                        this.tag.append(.{ .type = .unordered_item, .idx = end_index });
+                        format_node = .{ .unordered_list_item_start = {} };
+                        i += 1;
+                    } else {
+                        const text: []const u8 = parseText(token, allocator);
+                        format_node = .{ .text = text };
+                    }
+                },
                 else => {},
             }
 
@@ -115,6 +200,37 @@ pub const TokenFormater = struct {
         }
 
         return format_tokens;
+    }
+
+    fn getIndentation(this: *This, index: usize) usize {
+        var indent: usize = 0;
+        var j: usize = index;
+        while (j > 0 and this.tokens.items[j - 1].type == .tab) : (j -= 1) {
+            indent += 1;
+        }
+        return indent;
+    }
+
+    fn isListMarker(this: *This, index: usize, kind: ListType) bool {
+        var j: usize = index;
+        const tokens = this.tokens.items;
+        while (j > 0 and tokens[j - 1].type == .tab) {
+            j -= 1;
+        }
+
+        const at_line_start = (j == 0) or (tokens[j - 1].type == .newline);
+
+        if (!at_line_start) return false;
+
+        switch (kind) {
+            .unordered => {
+                const has_space_after = (index + 1 < tokens.len and tokens[index + 1].type == .space);
+                return has_space_after;
+            },
+            .ordered => {
+                return (index + 2 < tokens.len and tokens[index + 1].type == .period and tokens[index + 2].type == .space);
+            },
+        }
     }
 
     fn isHeader(this: *This, start_index: usize) bool {
@@ -167,10 +283,6 @@ pub const TokenFormater = struct {
 
         if (count == 0) return null;
 
-        if (count == 1 and i < tokens.len and tokens[i].type == .space) return null;
-
-        if (count == 2 and i < tokens.len and tokens[i].type == .space) count = 1;
-
         const emphasis_type = if (count == 2) .bold else .italics;
 
         var j: usize = i;
@@ -189,6 +301,101 @@ pub const TokenFormater = struct {
         }
 
         return null;
+    }
+
+    fn findListItemEnd(this: *This, start_index: usize, indent: usize) usize {
+        const tokens = this.tokens.items;
+        var j = start_index + 1;
+        var newline_count: usize = 0;
+
+        while (j < tokens.len) {
+            const token = tokens[j];
+
+            if (token.type == .newline) {
+                newline_count += 1;
+
+                if (newline_count == 2) {
+                    return j - 1;
+                }
+
+                j += 1;
+                continue;
+            } else {
+                newline_count = 0;
+            }
+
+            var k = j;
+            var depth: usize = 0;
+            while (k < tokens.len and tokens[k].type == .tab) : (k += 1) {
+                depth += 1;
+            }
+
+            if (depth < indent) return j - 1;
+
+            if (depth == indent and (this.isListMarker(k, .ordered) or this.isListMarker(k, .unordered))) {
+                return k - 1;
+            }
+
+            j = k + 1;
+        }
+
+        return tokens.len - 1;
+    }
+
+    fn findListEnd(this: *This, start_index: usize, indent: usize) usize {
+        const tokens = this.tokens.items;
+        var j = start_index + 1;
+        var newline_count: usize = 0;
+
+        while (j < tokens.len) {
+            const token = tokens[j];
+
+            if (token.type == .newline) {
+                newline_count += 1;
+
+                if (newline_count == 2) {
+                    return j - 1;
+                }
+
+                j += 1;
+                continue;
+            } else {
+                newline_count = 0;
+            }
+
+            var k = j;
+            var depth: usize = 0;
+            while (k < tokens.len and tokens[k].type == .tab) : (k += 1) {
+                depth += 1;
+            }
+
+            if (depth < indent) return j - 1;
+
+            j = k + 1;
+        }
+
+        return tokens.len - 1;
+    }
+
+    fn pushIndent(this: *TokenFormater, allocator: std.mem.Allocator, indent: usize) void {
+        const node = allocator.create(IndentNode) catch unreachable;
+        node.* = IndentNode{ .indent = indent, .next = this.indent_stack };
+        this.indent_stack = node;
+    }
+
+    fn popIndent(this: *TokenFormater, allocator: std.mem.Allocator) void {
+        if (this.indent_stack) |node| {
+            this.indent_stack = node.next;
+            allocator.destroy(node);
+        }
+    }
+
+    fn peekIndent(this: *TokenFormater) usize {
+        return if (this.indent_stack) |node| node.indent else 0;
+    }
+
+    fn hasIndent(this: *TokenFormater) bool {
+        return this.indent_stack != null;
     }
 };
 
