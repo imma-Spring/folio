@@ -88,9 +88,8 @@ pub const TokenFormater = struct {
     tag: std.DoublyLinkedList(Entry) = std.DoublyLinkedList(Entry),
     in_list: bool = false,
     list_indent_stack: ?*IndentNode = null,
-    //mode: std.DoublyLinkedList(Mode) = undefined,
 
-    pub fn format(this: *TokenFormater, tokenizer: LexerTokenizer, allocator: std.mem.Allocator) std.DoublyLinkedList(FormaterElement) {
+    pub fn format(this: *TokenFormater, tokenizer: LexerTokenizer, allocator: std.mem.Allocator) !std.DoublyLinkedList(FormaterElement) {
         this.tokens = tokenizer.getTokens(allocator);
         defer this.tokens.deinit();
 
@@ -99,267 +98,165 @@ pub const TokenFormater = struct {
         var i: usize = 0;
         while (i < this.tokens.items.len) : (i += 1) {
             const token = this.tokens.items[i];
-            var format_node: FormaterElement = undefined;
-            switch (token.type) {
-                .text => {
-                    const text: []const u8 = parseText(token, allocator);
-                    format_node = .{ .text = text };
-                },
-                .hashtag => {
-                    if (this.isHeader(i)) {
-                        const header_level = this.getHeaderLevel(i);
-                        format_node = .{ .header_start = header_level };
-                        i += header_level - 1;
-                    } else {
-                        const text: []const u8 = parseText(token, allocator);
-                        format_node = .{ .text = text };
-                    }
-                },
-                .bask_slash => {
-                    if ((this.getNumberOfBackslashes(i) & 1) == 1) {
-                        const text: []const u8 = parseText(token, allocator);
-                        format_node = .{ .text = text };
-                    }
-                },
-                .underscore => {
-                    if (takeByIndex(this.tag, i)) |entry| {
-                        switch (entry.type) {
-                            .bold => {
-                                i += 1;
-                            },
-                            else => {},
-                        }
-                    } else {
-                        const empasis_type = this.getEmphasis(i, .underscore);
-                        if (empasis_type) |tag| {
-                            this.tag.append(tag);
-                            format_node = .{ .bold_start = {} };
-                        } else {
-                            const text: []const u8 = parseText(token, allocator);
-                            format_node = .{ .text = text };
-                        }
-                    }
-                },
-                .asterisk => {
-                    if (this.isListMarker(i, .unordered)) {
-                        const indent_level = this.getIndentation(i);
-                        const end_index = this.findListItemEnd(i, indent_level);
-
-                        if (!this.hasIndent() or indent_level > this.peekIndent()) {
-                            this.pushIndent(allocator, indent_level);
-                            const list_end_index = this.findListEnd(i, indent_level);
-                            this.tag.append(.{ .type = .unordered, .idx = list_end_index });
-                            format_tokens.append(.{ .unordered_list_start = {} });
-                        }
-
-                        this.tag.append(.{ .type = .unordered_item, .idx = end_index });
-                        format_node = .{ .unordered_list_item_start = {} };
-                        i += 1;
-                    } else if (takeByIndex(this.tag, i)) |entry| {
-                        switch (entry.type) {
-                            .bold => {
-                                i += 1;
-                            },
-                            else => {},
-                        }
-                    } else {
-                        const empasis_type = this.getEmphasis(i, .asterisk);
-                        if (empasis_type) |tag| {
-                            this.tag.append(tag);
-                            format_node = .{ .bold_start = {} };
-                        } else {
-                            const text: []const u8 = parseText(token, allocator);
-                            format_node = .{ .text = text };
-                        }
-                    }
-                },
-                .plus, .dash => {
-                    if (this.isListMarker(i, .unordered)) {
-                        const indent_level = this.getIndentation(i);
-                        const end_index = this.findListItemEnd(i, indent_level);
-
-                        if (!this.hasIndent() or indent_level > this.peekIndent()) {
-                            this.pushIndent(allocator, indent_level);
-                            const list_end_index = this.findListEnd(i, indent_level);
-                            this.tag.append(.{ .type = .unordered, .idx = list_end_index });
-                            format_tokens.append(.{ .unordered_list_start = {} });
-                        }
-
-                        this.tag.append(.{ .type = .unordered_item, .idx = end_index });
-                        format_node = .{ .unordered_list_item_start = {} };
-                        i += 1;
-                    } else {
-                        const text: []const u8 = parseText(token, allocator);
-                        format_node = .{ .text = text };
-                    }
-                },
-                .number => {
-                    if (this.isListMarker(i, .ordered)) {
-                        const indent_level = this.getIndentation(i);
-                        const end_index = this.findListItemEnd(i, indent_level);
-
-                        if (!this.hasIndent() or indent_level > this.peekIndent()) {
-                            this.pushIndent(allocator, indent_level);
-                            const list_end_index = this.findListEnd(i, indent_level);
-                            this.tag.append(.{ .type = .ordered, .idx = list_end_index });
-                            format_tokens.append(.{ .unordered_list_start = {} });
-                        }
-
-                        this.tag.append(.{ .type = .ordered_item, .idx = end_index });
-                        format_node = .{ .unordered_list_item_start = {} };
-                        i += 2;
-                    } else {
-                        const text: []const u8 = parseText(token, allocator);
-                        format_node = .{ .text = text };
-                    }
-                },
-                else => {},
+            if (try this.handleToken(token, &i, &format_tokens, allocator)) |format_node| {
+                format_tokens.append(format_node);
             }
-
-            format_tokens.append(format_node);
         }
 
         return format_tokens;
     }
 
-    fn getIndentation(this: *This, index: usize) usize {
-        var indent: usize = 0;
-        var j: usize = index;
-        while (j > 0 and this.tokens.items[j - 1].type == .tab) : (j -= 1) {
-            indent += 1;
-        }
-        return indent;
+    fn handleToken(
+        this: *This,
+        token: LexerToken,
+        i: *usize,
+        format_tokens: *std.DoublyLinkedList(FormaterElement),
+        allocator: std.mem.Allocator,
+    ) !?FormaterElement {
+        return try switch (token.type) {
+            .text => this.handleText(token, allocator),
+            .hashtag => this.handleHashtag(i, allocator),
+            .back_slash => this.handleBackslash(i.*, token, allocator),
+            .underscore => this.handleUnderscore(i, token, allocator),
+            .asterisk => this.handleAsterisk(i, format_tokens, allocator, token),
+            .plus, .dash => this.handleDashPlus(i, format_tokens, allocator, token),
+            .number => this.handleNumber(i, format_tokens, allocator, token),
+            else => null,
+        };
     }
 
-    fn isListMarker(this: *This, index: usize, kind: ListType) bool {
-        var j: usize = index;
-        const tokens = this.tokens.items;
-        while (j > 0 and tokens[j - 1].type == .tab) {
-            j -= 1;
-        }
-
-        const at_line_start = (j == 0) or (tokens[j - 1].type == .newline);
-
-        if (!at_line_start) return false;
-
-        switch (kind) {
-            .unordered => {
-                const has_space_after = (index + 1 < tokens.len and tokens[index + 1].type == .space);
-                return has_space_after;
-            },
-            .ordered => {
-                return (index + 2 < tokens.len and tokens[index + 1].type == .period and tokens[index + 2].type == .space);
-            },
-        }
+    fn handleText(this: *This, token: LexerToken, allocator: std.mem.Allocator) !FormaterElement {
+        _ = this;
+        const text = try parseText(token, allocator);
+        return .{ .text = text };
     }
 
-    fn isHeader(this: *This, start_index: usize) bool {
-        const is_first = start_index == 0;
-        const follows_newline = if (start_index > 0) this.tokens.items[start_index - 1].type == .newline else false;
-
-        if (!(is_first or follows_newline)) return false;
-
-        const num_hashes = this.getHeaderLevel(start_index);
-        if (num_hashes == 0 or num_hashes > 6) return false;
-
-        const end_index = start_index + (num_hashes - 1);
-
-        const is_last = end_index >= this.tokens.items.len;
-        if (is_last) return true;
-
-        const precedes_space = this.tokens.items[end_index].type == .space;
-        return precedes_space;
+    fn handleHashtag(this: *This, i: *usize, allocator: std.mem.Allocator) !FormaterElement {
+        if (this.isHeader(i.*)) {
+            const header_level = this.getHeaderLevel(i.*);
+            i.* += header_level - 1;
+            return .{ .header_start = header_level };
+        }
+        return try this.handleText(this.tokens.items[i.*], allocator);
     }
 
-    fn getHeaderLevel(this: *This, start_index: usize) usize {
-        var index: usize = start_index;
-        var num_hashes: usize = 0;
-
-        while (index < this.tokens.items.len and this.tokens.items[index].type == .hashtag) : (index += 1) {
-            num_hashes += 1;
+    fn handleBackslash(this: *This, i: usize, token: LexerToken, allocator: std.mem.Allocator) !?FormaterElement {
+        if ((this.getNumberOfBackslashes(i) & 1) == 1) {
+            return try this.handleText(token, allocator);
         }
-
-        return num_hashes;
-    }
-
-    fn getNumberOfBackslashes(this: *This, start_index: usize) usize {
-        var index: usize = start_index - 1;
-        var num_backslashes = 0;
-        while (index >= 0 and this.tokens.items[index].type == .back_slash) : (index -= 1) {
-            num_backslashes += 1;
-        }
-    }
-
-    fn getEmphasis(this: *This, start_index: usize, symbol: LexerTokenType) ?struct { type: Tag, end: usize } {
-        const tokens = this.tokens.items;
-        var count: usize = 0;
-        var i: usize = start_index;
-        if (this.getNumberOfBackslashes(i) & 1 == 1) return null;
-
-        while (i < tokens.len and tokens[i].type == symbol) : (i += 1) {
-            count += 1;
-            if (count == 2) break;
-        }
-
-        if (count == 0) return null;
-
-        const emphasis_type = if (count == 2) .bold else .italics;
-
-        var j: usize = i;
-        var seen: usize = 0;
-        while (j < tokens.len and tokens[j].type != .newline) : (j += 1) {
-            if (tokens[j].type == symbol) {
-                if (this.getNumberOfBackslashes(j) & 1 == 1) {
-                    seen = 0;
-                    continue;
-                }
-                seen += 1;
-                if (seen == count) return .{ .type = emphasis_type, .end = j };
-            } else {
-                seen = 0;
-            }
-        }
-
         return null;
     }
 
-    fn findListItemEnd(this: *This, start_index: usize, indent: usize) usize {
-        const tokens = this.tokens.items;
-        var j = start_index + 1;
-        var newline_count: usize = 0;
-
-        while (j < tokens.len) {
-            const token = tokens[j];
-
-            if (token.type == .newline) {
-                newline_count += 1;
-
-                if (newline_count == 2) {
-                    return j - 1;
-                }
-
-                j += 1;
-                continue;
-            } else {
-                newline_count = 0;
-            }
-
-            var k = j;
-            var depth: usize = 0;
-            while (k < tokens.len and tokens[k].type == .tab) : (k += 1) {
-                depth += 1;
-            }
-
-            if (depth < indent) return j - 1;
-
-            if (depth == indent and (this.isListMarker(k, .ordered) or this.isListMarker(k, .unordered))) {
-                return k - 1;
-            }
-
-            j = k + 1;
+    fn handleUnderscore(this: *This, i: *usize, token: LexerToken, allocator: std.mem.Allocator) !?FormaterElement {
+        if (takeByIndex(this.tag, i.*)) |entry| {
+            if (entry.type == .bold) i.* += 1;
+            return null;
         }
+        if (this.getEmphasis(i.*, .underscore)) |tag| {
+            this.tag.append(tag);
+            return .{ .bold_start = {} };
+        }
+        return try this.handleText(token, allocator);
+    }
 
-        return tokens.len - 1;
+    fn handleAsterisk(
+        this: *This,
+        i: *usize,
+        format_tokens: *std.DoublyLinkedList(FormaterElement),
+        allocator: std.mem.Allocator,
+        token: LexerToken,
+    ) !?FormaterElement {
+        if (this.isListMarker(i.*, .unordered)) {
+            return try this.handleList(i, format_tokens, allocator, .unordered);
+        }
+        if (takeByIndex(this.tag, i.*)) |entry| {
+            if (entry.type == .bold) i.* += 1;
+            return null;
+        }
+        if (this.getEmphasis(i.*, .asterisk)) |tag| {
+            this.tag.append(tag);
+            return .{ .bold_start = {} };
+        }
+        return try this.handleText(token, allocator);
+    }
+
+    fn handleDash(
+        this: *This,
+        i: *usize,
+        format_tokens: *std.DoublyLinkedList(FormaterElement),
+        allocator: std.mem.Allocator,
+        token: LexerToken,
+    ) !FormaterElement {
+        if (this.isListMarker(i.*, .unordered)) {
+            return try this.handleList(i, format_tokens, allocator, .unordered);
+        }
+        return try this.handleText(token, allocator);
+    }
+
+    fn handlePlus(
+        this: *This,
+        i: *usize,
+        format_tokens: *std.DoublyLinkedList(FormaterElement),
+        allocator: std.mem.Allocator,
+        token: LexerToken,
+    ) !FormaterElement {
+        if (this.isListMarker(i.*, .unordered)) {
+            return try this.handleList(i, format_tokens, allocator, .unordered);
+        }
+        return try this.handleText(token, allocator);
+    }
+
+    fn handleNumber(
+        this: *This,
+        i: *usize,
+        format_tokens: *std.DoublyLinkedList(FormaterElement),
+        allocator: std.mem.Allocator,
+        token: LexerToken,
+    ) !FormaterElement {
+        if (this.isListMarker(i.*, .ordered)) {
+            return try this.handleList(i, format_tokens, allocator, .ordered);
+        }
+        return try this.handleText(token, allocator);
+    }
+
+    fn handleList(
+        this: *This,
+        i: *usize,
+        format_tokens: *std.DoublyLinkedList(FormaterElement),
+        allocator: std.mem.Allocator,
+        kind: ListType,
+    ) !FormaterElement {
+        try this.openListIfNeeded(i.*, kind, allocator, format_tokens);
+        const end_index = this.findListItemEnd(i.*, this.getIndentation(i.*));
+        this.tag.append(.{ .type = (if (kind == .ordered) .ordered_item else .unordered_item), .idx = end_index });
+        i.* += (if (kind == .ordered) 2 else 1);
+        return switch (kind) {
+            .ordered => {
+                .{ .ordered_list_item_start = {} };
+            },
+            .unordered => {
+                .{ .unordered_list_item_start = {} };
+            },
+        };
+    }
+
+    fn openListIfNeeded(
+        this: *This,
+        i: usize,
+        kind: ListType,
+        allocator: std.mem.Allocator,
+        format_tokens: *std.DoublyLinkedList(FormaterElement),
+    ) !void {
+        const indent_level = this.getIndentation(i);
+        if (!this.hasIndent() or indent_level > this.peekIndent()) {
+            try this.pushIndent(allocator, indent_level);
+            const list_end_index = this.findListEnd(i, indent_level);
+            this.tag.append(.{ .type = kind, .idx = list_end_index });
+            switch (kind) {
+                .unordered => format_tokens.append(.{ .unordered_list_start = {} }),
+                .ordered => format_tokens.append(.{ .ordered_list_start = {} }),
+            }
+        }
     }
 
     fn findListEnd(this: *This, start_index: usize, indent: usize) usize {
@@ -397,8 +294,8 @@ pub const TokenFormater = struct {
         return tokens.len - 1;
     }
 
-    fn pushIndent(this: *TokenFormater, allocator: std.mem.Allocator, indent: usize) void {
-        const node = allocator.create(IndentNode) catch unreachable;
+    fn pushIndent(this: *TokenFormater, allocator: std.mem.Allocator, indent: usize) !void {
+        const node = try allocator.create(IndentNode) catch unreachable;
         node.* = IndentNode{ .indent = indent, .next = this.indent_stack };
         this.indent_stack = node;
     }
@@ -419,9 +316,9 @@ pub const TokenFormater = struct {
     }
 };
 
-fn parseText(token: LexerToken, allocator: std.mem.Allocator) []const u8 {
+fn parseText(token: LexerToken, allocator: std.mem.Allocator) ![]const u8 {
     const text_length: usize = @intFromPtr(token.end) - @intFromPtr(token.start);
-    var buffer = allocator.alloc(u8, text_length);
+    var buffer = try allocator.alloc(u8, text_length);
     fillBuffer(&buffer, token.start, text_length);
     return buffer;
 }
