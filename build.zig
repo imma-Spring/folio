@@ -40,4 +40,26 @@ pub fn build(b: *std.Build) void {
 
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
+
+    // -----------------------------
+    // TEST STEP
+    // -----------------------------
+
+    // List all files you want to test
+    const test_files = [_][]const u8{
+        "src/lexer.zig",
+        "src/formater.zig",
+    };
+
+    const test_all = b.step("test", "Run all Zig tests");
+
+    for (test_files) |file| {
+        const test_module = b.createModule(.{
+            .root_source_file = b.path(file),
+            .target = target,
+            .optimize = optimize,
+        });
+        const t = b.addTest(.{ .root_module = test_module });
+        test_all.dependOn(&t.step);
+    }
 }
